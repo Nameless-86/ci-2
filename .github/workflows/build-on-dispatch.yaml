@@ -3,7 +3,7 @@ name: Update from ci-1 and build
 
 on:
   repository_dispatch:
-    types: [ci1-updated]
+    types: [go_sum_changed-at-ci-1]
 
 permissions:
   contents: write # needed for committing back to ci-2
