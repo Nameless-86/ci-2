@@ -1,25 +1,73 @@
-name: Build on Dispatch from Ci-1
+# .github/workflows/update-from-ci1-and-build.yaml
+name: Update from ci-1 and build
+
 on:
   repository_dispatch:
-    types: [go_sum_changed-at-ci-1]
+    types: [ci1-updated]
+
 permissions:
-  contents: read
+  contents: write # needed for committing back to ci-2
 
 jobs:
-  build:
+  update-and-build:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: 1.24
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{runner.os}}-go-
 
-      - name: build
-        run: GOFLAGS="-mod=readonly" go build ./...
+    steps:
+      - name: Step 1 – checkout ci-2
+        uses: actions/checkout@v4
+
+      - name: Step 2 – setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.1"
+
+      - name: Step 3 – log start
+        run: echo "Starting dependency update from ci-1 and build in ci-2"
+
+      - name: Step 4 – go get -u ci-1 and tidy
+        run: |
+          echo "Running: go get -u github.com/Nameless-86/ci-1@latest"
+          go get -u github.com/Nameless-86/ci-1@latest
+
+          echo "Running: go mod tidy"
+          go mod tidy
+
+      - name: Step 5 – build binary
+        run: |
+          echo "Building binary to ./bin/ci2-app"
+          mkdir -p bin
+          GOFLAGS="-mod=readonly" go build -o bin/ci2-app ./...
+
+      - name: Step 6 – optionally upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci2-app
+          path: bin/ci2-app
+
+      - name: Step 7 – commit binary only (no go.mod / go.sum)
+        env:
+          CI2_PUSH_PAT: ${{ secrets.CI2_PUSH_PAT }} # PAT with repo scope on Nameless-86/ci-2
+        run: |
+          echo "Preparing commit with binary only (excluding go.mod/go.sum)"
+
+          # Move go.mod and go.sum away so they are NOT included in the commit
+          mkdir -p .gometa
+          if [ -f go.mod ]; then mv go.mod .gometa/go.mod; fi
+          if [ -f go.sum ]; then mv go.sum .gometa/go.sum; fi
+
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@example.com"
+
+          git add bin/ci2-app
+          git status
+
+          git commit -m "Update ci-2 binary from ci-1 change: ${GITHUB_SHA}" || echo "No binary changes to commit"
+
+          echo "Pushing commit with binary only to main"
+          git push https://$CI2_PUSH_PAT@github.com/Nameless-86/ci-2.git HEAD:main
+
+          # Restore go.mod and go.sum in the workspace (still uncommitted)
+          if [ -f .gometa/go.mod ]; then mv .gometa/go.mod go.mod; fi
+          if [ -f .gometa/go.sum ]; then mv .gometa/go.sum go.sum; fi
+
+          echo "Finished: binary committed, go.mod/go.sum left unchanged in repo history"
