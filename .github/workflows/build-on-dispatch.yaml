@@ -6,7 +6,7 @@ on:
     types: [go_sum_changed-at-ci-1]
 
 permissions:
-  contents: write # needed for committing back to ci-2
+  contents: write # for commit binary
 
 jobs:
   update-and-build:
@@ -24,7 +24,12 @@ jobs:
       - name: Step 3 – log start
         run: echo "Starting dependency update from ci-1 and build in ci-2"
 
-      - name: Step 4 – go get -u ci-1 and tidy
+      - name: Step 4 – clear Go module cache
+        run: |
+          echo "Clearing Go module cache"
+          go clean -modcache
+
+      - name: Step 5 – go get -u ci-1 and tidy
         run: |
           echo "Running: go get -u github.com/Nameless-86/ci-1@latest"
           go get -u github.com/Nameless-86/ci-1@latest
@@ -32,19 +37,19 @@ jobs:
           echo "Running: go mod tidy"
           go mod tidy
 
-      - name: Step 5 – build binary
+      - name: Step 6 – build binary
         run: |
           echo "Building binary to ./bin/ci2-app"
           mkdir -p bin
           GOFLAGS="-mod=readonly" go build -o bin/ci2-app ./...
 
-      - name: Step 6 – optionally upload binary artifact
+      - name: Step 7 – optionally upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: ci2-app
           path: bin/ci2-app
 
-      - name: Step 7 – commit binary only (no go.mod / go.sum)
+      - name: Step 8 – commit binary only (no go.mod / go.sum)
         env:
           CI2_PUSH_PAT: ${{ secrets.CI2_PUSH_PAT }} # PAT with repo scope on Nameless-86/ci-2
         run: |
